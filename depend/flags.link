@@ -1,0 +1,6 @@
+-g
+-O
+-fno-builtin-memcpy
+-Xlinker
+-s0
+assisted

@@ -1,0 +1,3416 @@
+	MODULE	crt0
+	.ENHANCED
+	.LARGE	       ; Not really, but we need the space for DEBUG
+
+	INCLUDE native_if.inc
+
+; Define the segment layout
+
+	.SEG	VAREND
+	.PACK	{INIT, VAR, VAREND}, {H'500, H'900}
+	.PACK	{CONST, INITC}, {H'7400, H'D400}
+
+; This segment holds stabs debug info and doesn't make it onto bluecore
+
+	.CSEG	DEBUG
+	ORG	H'10000
+
+; Put labels at selected positions so
+; we can deduce segment size and placement
+
+	.SEG	INIT
+INIT:
+	.SEG	VAR
+VAR:
+	.SEG	VAREND
+VAREND:
+	.SEG	CONST
+CONST:
+	.SEG	INITC
+INITC:
+
+$XAP_AH  EQU H'ffe0
+$XAP_AL  EQU H'ffe1
+$XAP_UXH EQU H'ffe2
+$XAP_UXL EQU H'ffe3
+$XAP_UY	 EQU H'ffe4
+
+; Logical address of native globals and stack
+; Should these be derived instead?
+NATIVE_GLOBALS_LOGICAL_ADDRESS    EQU	H'0500
+NATIVE_STACK_LOGICAL_ADDRESS      EQU	H'0100
+
+; Stack cover for Assisted mode
+$ASSISTED_STACK_COVER   CEQU   SHARED_STACK_COVER
+
+; Put the version number at the start of the CONST segment
+
+	.SEG	CONST
+	DC	12290 ; updated by Makefile from syscalls
+
+; ****************************************************************************
+; Startup code
+; ****************************************************************************
+
+	.CODE
+	ORG	H'0000
+	
+	ld    al,#VAR-INIT  ; Size of INIT segment
+	beq   skip_init
+	ld    ah,#INITC ; Start of const. 
+	ld    x,#NATIVE_GLOBALS_LOGICAL_ADDRESS ; Start of globals
+
+init_vars:
+        ; Copy any/all const into globals
+	st    x,@(-1,y)
+	st    ah,@(-2,y)
+	ld    x,@$XAP_AH    ; Source (const) address
+	ld    ah,@(0,x)     ; Load the contents of the source address
+	ld    x,@(-1,y)     ; Destination (globals) address
+	st    ah,@(0,x)
+
+	;Increment source and destination
+	ld    ah,@(-2,y)
+	add   ah,#1
+	ld    x,@(-1,y)
+	add   x,#1
+      
+	sub   al,#1
+	bne   init_vars
+skip_init:
+	
+
+	; AL is now zero
+	ld    ah,#VAREND-VAR  ; Size of BSS segment
+	beq   skip_zero
+	ld    x,#VAR
+loop_zero:
+	st    al,@(0,x)
+	add   x,#1
+	sub   ah,#1
+	bne   loop_zero
+skip_zero:
+
+	; call init code, normally empty
+	bsr   $__init
+
+	; pause waiting for the debugger, if appropriate
+	bsr $_NativePauseForDebug
+
+	ld    ah,#0
+	ld    al,#0
+	bsr   $_main
+
+	; Main may exit by returning or by explicitly calling $exit.
+	; In either case exit code will be in AL
+	; Note 'real' programs are unlikely to exit.
+	bra   $_exit
+
+$_abort:
+	; Exit abnormally
+	ld    al,#1
+	bra   $_exit
+
+;.import _exit
+	ENDMOD
+	MODULE	exit
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_exit:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#4
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	exit
+	MODULE	PanicNull
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_PanicNull:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#7
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	PanicNull
+	MODULE	MessagePioTask
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_MessagePioTask:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#48
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	MessagePioTask
+	MODULE	PioDebounce32
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_PioDebounce32:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#49
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	PioDebounce32
+	MODULE	NativePauseForDebug
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_NativePauseForDebug:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#60
+	bra $common_trap_code
+trapset_24	EQU	$trapset_24
+	ENDMOD	NativePauseForDebug
+	MODULE	I2cTransfer
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_I2cTransfer:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#149
+	bra $common_trap_code
+trapset_1	EQU	$trapset_1
+	ENDMOD	I2cTransfer
+	MODULE	putchar
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_putchar:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#5
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	putchar
+	MODULE	MessageSendLater
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_MessageSendLater:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#16
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	MessageSendLater
+	MODULE	MessageWait
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_MessageWait:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#18
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	MessageWait
+	MODULE	MessageFree
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_MessageFree:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#20
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	MessageFree
+	MODULE	trapset_0
+	.CSEG	CODE
+	.LARGE
+	.ENHANCED
+$trapset_0:
+	ENDMOD	trapset_0
+	MODULE	trapset_1
+	.CSEG	CODE
+	.LARGE
+	.ENHANCED
+$trapset_1:
+	ENDMOD	trapset_1
+	MODULE	trapset_24
+	.CSEG	CODE
+	.LARGE
+	.ENHANCED
+$trapset_24:
+	ENDMOD	trapset_24
+	MODULE	common_trap_code
+       .LARGE
+       .ENHANCED
+       .CODE
+
+	INCLUDE native_if.inc
+
+$common_trap_code:
+
+	st	x,@(0,y) 
+	ld	x,@SHARED_TRAP_HANDLER_ASSISTED_HWRD
+	st	x,@(-1,y)
+	ld	xh,@(-1,y)
+	bra	@SHARED_TRAP_HANDLER_ASSISTED_LWRD
+
+	ENDMOD 
+	MODULE	VmPutChar
+	.ENHANCED
+	.CSEG	CODE
+	.LARGE
+
+	INCLUDE native_if.inc
+
+$_VmPutChar:
+	enterl  #SHARED_TRAP_HANDLER_STACK_USAGE
+	ld    x,#32
+	bra $common_trap_code
+trapset_0	EQU	$trapset_0
+	ENDMOD	VmPutChar
+	MODULE	e_t_c
+
+	.ALL
+e_t_c:
+	ENDMOD
+	MODULE	accelerometer
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed:  -IC:/ADK3.5.1/tools/include/firmware
+;# -IC:/ADK3.5.1/tools/include/standard
+;# -IC:/ADK3.5.1/tools/include/profiles/BlueLab-6.5.2-Release -iprefix
+;# -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3 -D__GNUC_PATCHLEVEL__=3 -MD -MQ
+;# -massisted-crt0 -mlarge-mode -mno-inline-block-copy-mode
+;# -mfunction-ptr-pi -mal-first -mleaf-optim -mno-function-sizeof
+;# -mworkaround-b96516 -ansi -auxbase-strip -g -O -pedantic -Wall
+;# -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -ansi -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.SEG	VAR
+_dcount:
+	DS	1
+	.CODE
+$_LIS2DH_init:
+	enterl	#4
+?LBB_LIS2DH_init:
+?LBB2:
+	ld	AL,#H'000F
+	bsr	$_readRegister
+	st	AL,@(H'0001,Y)
+	st	AL,@(0,Y)
+	ld	AL,#(?LC0)
+	bsr	$_printf
+	ld	AL,@(H'0001,Y)
+	cmp	AL,#H'0033
+	bne	?L2
+	bsr	$_standby
+	bsr	$_setupTap
+	bsr	$_active
+	bra	(?L1)
+?L2:
+	bsr	$_standby
+	ld	AL,#(?LC1)
+	bsr	$_puts
+?L1:
+?LBE2:
+?LBE_LIS2DH_init:
+	leavel	#4
+	.SEG	CONST
+?LC0:
+	dc	H'41
+	dc	H'63
+	dc	H'63
+	dc	H'65
+	dc	H'6C
+	dc	H'20
+	dc	H'49
+	dc	H'6E
+	dc	H'69
+	dc	H'74
+	dc	H'20
+	dc	H'2D
+	dc	H'20
+	dc	H'57
+	dc	H'48
+	dc	H'4F
+	dc	H'5F
+	dc	H'41
+	dc	H'4D
+	dc	H'5F
+	dc	H'49
+	dc	H'5F
+	dc	H'56
+	dc	H'41
+	dc	H'4C
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC1:
+	dc	H'41
+	dc	H'63
+	dc	H'63
+	dc	H'65
+	dc	H'6C
+	dc	H'20
+	dc	H'69
+	dc	H'6E
+	dc	H'20
+	dc	H'53
+	dc	H'74
+	dc	H'61
+	dc	H'6E
+	dc	H'62
+	dc	H'79
+	dc	H'00
+	.CODE
+;.stabn	192,0,0,?LBB2
+;.stabn	224,0,0,?LBE2
+$_standby:
+	enterl	#4
+?LBB_standby:
+?LBB3:
+	ld	AL,#H'0020
+	bsr	$_readRegister
+	st	AL,@(H'0001,Y)
+	ld	AL,#(?LC2)
+	bsr	$_puts
+	ld	AL,@(H'0001,Y)
+	st	AL,@(0,Y)
+	ld	AL,#(?LC3)
+	bsr	$_printf
+	ld	AL,#H'0020
+	ld	AH,#H'0000
+	bsr	$_writeRegister
+	ld	AL,#H'0020
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC4)
+	bsr	$_printf
+?LBE3:
+?LBE_standby:
+	leavel	#4
+	.SEG	CONST
+?LC2:
+	dc	H'63
+	dc	H'61
+	dc	H'6C
+	dc	H'6C
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'73
+	dc	H'74
+	dc	H'61
+	dc	H'6E
+	dc	H'64
+	dc	H'62
+	dc	H'79
+	dc	H'00
+?LC3:
+	dc	H'63
+	dc	H'6F
+	dc	H'6E
+	dc	H'74
+	dc	H'72
+	dc	H'6F
+	dc	H'6C
+	dc	H'20
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'62
+	dc	H'34
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC4:
+	dc	H'63
+	dc	H'6F
+	dc	H'6E
+	dc	H'74
+	dc	H'72
+	dc	H'6F
+	dc	H'6C
+	dc	H'20
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'61
+	dc	H'66
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+	.CODE
+;.stabn	192,0,0,?LBB3
+;.stabn	224,0,0,?LBE3
+$_active:
+	enterl	#4
+?LBB_active:
+?LBB4:
+	ld	AL,#H'0020
+	bsr	$_readRegister
+	st	AL,@(H'0001,Y)
+	st	AL,@(0,Y)
+	ld	AL,#(?LC5)
+	bsr	$_printf
+	ld	AL,#H'0020
+	ld	AH,@(H'0001,Y)
+	or	AH,#H'0077
+	bsr	$_writeRegister
+	ld	AL,#H'0020
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC6)
+	bsr	$_printf
+	ld	AL,#H'0023
+	bsr	$_readRegister
+	st	AL,@(H'0001,Y)
+	st	AL,@(0,Y)
+	ld	AL,#(?LC7)
+	bsr	$_printf
+	ld	AL,#H'0023
+	ld	AH,@(H'0001,Y)
+	or	AH,#H'0008
+	bsr	$_writeRegister
+	ld	AL,#H'0023
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC8)
+	bsr	$_printf
+?LBE4:
+?LBE_active:
+	leavel	#4
+	.SEG	CONST
+?LC5:
+	dc	H'63
+	dc	H'6F
+	dc	H'6E
+	dc	H'74
+	dc	H'72
+	dc	H'6F
+	dc	H'6C
+	dc	H'20
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'62
+	dc	H'34
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'3A
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC6:
+	dc	H'63
+	dc	H'6F
+	dc	H'6E
+	dc	H'74
+	dc	H'72
+	dc	H'6F
+	dc	H'6C
+	dc	H'20
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'61
+	dc	H'66
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'43
+	dc	H'54
+	dc	H'52
+	dc	H'4C
+	dc	H'5F
+	dc	H'52
+	dc	H'45
+	dc	H'47
+	dc	H'31
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC7:
+	dc	H'63
+	dc	H'6F
+	dc	H'6E
+	dc	H'74
+	dc	H'72
+	dc	H'6F
+	dc	H'6C
+	dc	H'20
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'62
+	dc	H'34
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'43
+	dc	H'54
+	dc	H'52
+	dc	H'4C
+	dc	H'5F
+	dc	H'52
+	dc	H'45
+	dc	H'47
+	dc	H'34
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC8:
+	dc	H'63
+	dc	H'6F
+	dc	H'6E
+	dc	H'74
+	dc	H'72
+	dc	H'6F
+	dc	H'6C
+	dc	H'20
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'61
+	dc	H'66
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'43
+	dc	H'54
+	dc	H'52
+	dc	H'4C
+	dc	H'5F
+	dc	H'52
+	dc	H'45
+	dc	H'47
+	dc	H'34
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+	.CODE
+;.stabn	192,0,0,?LBB4
+;.stabn	224,0,0,?LBE4
+$_AccAvailable:
+	enterl	#2
+?LBB_AccAvailable:
+	ld	AL,#H'0027
+	bsr	$_readRegister
+	ld	AH,@$XAP_AL
+	and	AH,#H'0008
+	lsr	#H'0003
+	ld	AL,@$XAP_AH
+?LBE_AccAvailable:
+	leavel	#2
+$_AccRead:
+	enterl	#16
+?LBB_AccRead:
+?LBB5:
+	ld	AL,#H'0028
+	bsr	$_readRegister
+	st	AL,@(H'0006,Y)
+	ld	AL,#H'0029
+	bsr	$_readRegister
+	st	AL,@(H'0007,Y)
+	ld	AL,#H'002A
+	bsr	$_readRegister
+	st	AL,@(H'0008,Y)
+	ld	AL,#H'002B
+	bsr	$_readRegister
+	st	AL,@(H'0009,Y)
+	ld	AL,#H'002C
+	bsr	$_readRegister
+	st	AL,@(H'000A,Y)
+	ld	AL,#H'002D
+	bsr	$_readRegister
+	ld	X,@$XAP_AL
+	st	AL,@(H'000B,Y)
+	ld	AL,@(H'0007,Y)
+	asl	#H'0008
+	ld	AH,@$XAP_AL
+	or	AH,@(H'0006,Y)
+	asr	#H'0004
+	st	AH,@H'fff9
+	ld	AL,@(H'0009,Y)
+	asl	#H'0008
+	or	AL,@(H'0008,Y)
+	ld	AH,@$XAP_AL
+	asr	#H'0004
+	st	AH,@H'fff8
+	ld	AL,@$XAP_UXL
+	asl	#H'0008
+	ld	X,@$XAP_AL
+	or	X,@(H'000A,Y)
+	ld	AH,@$XAP_UXL
+	asr	#H'0004
+	ld	X,@$XAP_AH
+	ld	AH,@H'fff9
+	asr	#H'0010
+	st	AH,@(H'000C,Y)
+	st	AL,@(H'000D,Y)
+	ld	AH,@H'fff8
+	asr	#H'0010
+	st	AH,@H'fff8
+	st	AL,@H'fff9
+	ld	AH,@$XAP_UXL
+	asr	#H'0010
+	st	AH,@H'fffa
+	st	AL,@H'fffb
+	ld	AH,@(H'000C,Y)
+	ld	AL,@(H'000D,Y)
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AH,@H'fff8
+	ld	AL,@H'fff9
+	st	AH,@(H'0002,Y)
+	st	AL,@(H'0003,Y)
+	ld	AH,@H'fffa
+	ld	AL,@H'fffb
+	st	AH,@(H'0004,Y)
+	st	AL,@(H'0005,Y)
+	ld	AL,#(?LC9)
+	bsr	$_printf
+?LBE5:
+?LBE_AccRead:
+	leavel	#16
+	.SEG	CONST
+?LC9:
+	dc	H'0A
+	dc	H'43
+	dc	H'78
+	dc	H'3A
+	dc	H'25
+	dc	H'6C
+	dc	H'64
+	dc	H'09
+	dc	H'43
+	dc	H'79
+	dc	H'3A
+	dc	H'25
+	dc	H'6C
+	dc	H'64
+	dc	H'09
+	dc	H'43
+	dc	H'7A
+	dc	H'3A
+	dc	H'25
+	dc	H'6C
+	dc	H'64
+	dc	H'09
+	dc	H'00
+	.CODE
+;.stabn	192,0,0,?LBB5
+;.stabn	224,0,0,?LBE5
+$_setupTap:
+	enterl	#3
+?LBB_setupTap:
+?LBB6:
+	ld	AL,#H'0022
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC10)
+	bsr	$_printf
+	ld	AL,#H'0022
+	ld	AH,#H'0080
+	bsr	$_writeRegister
+	ld	AL,#H'0022
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC11)
+	bsr	$_printf
+	ld	AL,#H'0038
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC12)
+	bsr	$_printf
+	ld	AL,#H'0038
+	ld	AH,#H'0020
+	bsr	$_writeRegister
+	ld	AL,#H'0038
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC13)
+	bsr	$_printf
+	ld	AL,#H'003A
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC14)
+	bsr	$_printf
+	ld	AL,#H'003A
+	ld	AH,#H'0059
+	bsr	$_writeRegister
+	ld	AL,#H'003A
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC15)
+	bsr	$_printf
+	ld	AL,#H'003B
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC16)
+	bsr	$_printf
+	ld	AL,#H'003B
+	ld	AH,#H'0004
+	bsr	$_writeRegister
+	ld	AL,#H'003B
+	bsr	$_readRegister
+	st	AL,@(0,Y)
+	ld	AL,#(?LC17)
+	bsr	$_printf
+	ld	AL,#H'003C
+	ld	AH,#H'0050
+	bsr	$_writeRegister
+	ld	AL,#H'003D
+	ld	AH,#H'0050
+	bsr	$_writeRegister
+?LBE6:
+?LBE_setupTap:
+	leavel	#3
+	.SEG	CONST
+?LC10:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'62
+	dc	H'34
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'43
+	dc	H'54
+	dc	H'52
+	dc	H'4C
+	dc	H'5F
+	dc	H'52
+	dc	H'45
+	dc	H'47
+	dc	H'33
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC11:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'61
+	dc	H'66
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'43
+	dc	H'54
+	dc	H'52
+	dc	H'4C
+	dc	H'5F
+	dc	H'52
+	dc	H'45
+	dc	H'47
+	dc	H'33
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC12:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'62
+	dc	H'34
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'43
+	dc	H'4C
+	dc	H'49
+	dc	H'43
+	dc	H'4B
+	dc	H'5F
+	dc	H'43
+	dc	H'46
+	dc	H'47
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC13:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'61
+	dc	H'66
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'43
+	dc	H'4C
+	dc	H'49
+	dc	H'43
+	dc	H'4B
+	dc	H'5F
+	dc	H'43
+	dc	H'46
+	dc	H'47
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC14:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'62
+	dc	H'34
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'43
+	dc	H'4C
+	dc	H'49
+	dc	H'43
+	dc	H'4B
+	dc	H'5F
+	dc	H'54
+	dc	H'48
+	dc	H'53
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC15:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'61
+	dc	H'66
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'43
+	dc	H'4C
+	dc	H'49
+	dc	H'43
+	dc	H'4B
+	dc	H'5F
+	dc	H'54
+	dc	H'48
+	dc	H'53
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC16:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'62
+	dc	H'34
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'54
+	dc	H'49
+	dc	H'4D
+	dc	H'45
+	dc	H'5F
+	dc	H'4C
+	dc	H'49
+	dc	H'4D
+	dc	H'49
+	dc	H'54
+	dc	H'20
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+?LC17:
+	dc	H'72
+	dc	H'65
+	dc	H'67
+	dc	H'20
+	dc	H'61
+	dc	H'66
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'20
+	dc	H'77
+	dc	H'72
+	dc	H'69
+	dc	H'74
+	dc	H'69
+	dc	H'6E
+	dc	H'67
+	dc	H'20
+	dc	H'4C
+	dc	H'49
+	dc	H'53
+	dc	H'32
+	dc	H'44
+	dc	H'48
+	dc	H'5F
+	dc	H'54
+	dc	H'49
+	dc	H'4D
+	dc	H'45
+	dc	H'5F
+	dc	H'4C
+	dc	H'49
+	dc	H'4D
+	dc	H'49
+	dc	H'54
+	dc	H'3A
+	dc	H'20
+	dc	H'5B
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+	.CODE
+;.stabn	192,0,0,?LBB6
+;.stabn	224,0,0,?LBE6
+$_readTap:
+	enterl	#3
+?LBB_readTap:
+?LBB7:
+	ld	AL,#H'0039
+	bsr	$_readRegister
+	ld	AH,@$XAP_AL
+	and	AH,#H'0020
+	lsr	#H'0005
+	cmp	AH,#H'0000
+	beq	?L11
+	ld	AL,@_dcount
+	add	AL,#H'0001
+	st	AL,@_dcount
+	st	AL,@(0,Y)
+	ld	AL,#(?LC18)
+	bsr	$_printf
+?L11:
+?LBE7:
+	ld	AL,#H'0000
+?LBE_readTap:
+	leavel	#3
+	.SEG	CONST
+?LC18:
+	dc	H'44
+	dc	H'6F
+	dc	H'75
+	dc	H'62
+	dc	H'6C
+	dc	H'65
+	dc	H'20
+	dc	H'74
+	dc	H'61
+	dc	H'70
+	dc	H'20
+	dc	H'64
+	dc	H'65
+	dc	H'74
+	dc	H'65
+	dc	H'63
+	dc	H'74
+	dc	H'65
+	dc	H'64
+	dc	H'20
+	dc	H'5B
+	dc	H'25
+	dc	H'64
+	dc	H'5D
+	dc	H'0A
+	dc	H'00
+	.CODE
+;.stabn	192,0,0,?LBB7
+;.stabn	224,0,0,?LBE7
+$_readRegister:
+	enterl	#8
+?LBB_readRegister:
+?LBB8:
+	st	AL,@(H'0005,Y)
+	ld	AL,#H'0001
+	st	AL,@(0,Y)
+	ld	AL,@$XAP_UY
+	add	AL,#H'0003
+	st	AL,@(H'0001,Y)
+	ld	AL,#H'0002
+	st	AL,@(H'0002,Y)
+	ld	AL,#H'0033
+	ld	AH,@$XAP_UY
+	add	AH,#H'0005
+	bsr	$_I2cTransfer
+	bsr	$_PanicNull
+?LBE8:
+	ld	AL,@(H'0003,Y)
+?LBE_readRegister:
+	leavel	#8
+;.stabn	192,0,0,?LBB8
+;.stabn	224,0,0,?LBE8
+$_writeRegister:
+	enterl	#7
+?LBB_writeRegister:
+	st	AL,@(H'0003,Y)
+?LBB9:
+	st	AH,@(H'0004,Y)
+	ld	AL,#H'0002
+	st	AL,@(0,Y)
+	ld	AL,#H'0000
+	st	AL,@(H'0001,Y)
+	st	AL,@(H'0002,Y)
+	ld	AL,#H'0032
+	ld	AH,@$XAP_UY
+	add	AH,#H'0003
+	bsr	$_I2cTransfer
+	bsr	$_PanicNull
+?LBE9:
+?LBE_writeRegister:
+	leavel	#7
+;.stabn	192,0,0,?LBB9
+;.stabn	224,0,0,?LBE9
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 48 total = 48
+;# Function pattern *movqi3 used[0] = 73 total = 73
+;# Function pattern *movhi used[2] = 3 used[3] = 6 total = 9
+;# Function pattern *addqi0 used[0] = 3 total = 3
+;# Function pattern *addqi2 used[0] = 1 total = 1
+;# Function pattern *andqi3 used[0] = 2 total = 2
+;# Function pattern *iorqi3 used[0] = 5 total = 5
+;# Function pattern *extendqihi2 used[1] = 3 total = 3
+;# Function pattern *lshrqi3 used[0] = 2 total = 2
+;# Function pattern *ashrqi3 used[0] = 3 total = 3
+;# Function pattern *ashlqi3 used[0] = 3 total = 3
+;# Function pattern jump used[0] = 1 total = 1
+;# Function pattern *call1 used[0] = 13 total = 13
+;# Function pattern *call_value1 used[0] = 46 total = 46
+;# Function pattern movstrqi+3 used[0] = 1 total = 1
+;# Function pattern movstrqi+5 used[0] = 1 total = 1
+	MODULE	main
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed:  -IC:/ADK3.5.1/tools/include/firmware
+;# -IC:/ADK3.5.1/tools/include/standard
+;# -IC:/ADK3.5.1/tools/include/profiles/BlueLab-6.5.2-Release -iprefix
+;# -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3 -D__GNUC_PATCHLEVEL__=3 -MD -MQ
+;# -massisted-crt0 -mlarge-mode -mno-inline-block-copy-mode
+;# -mfunction-ptr-pi -mal-first -mleaf-optim -mno-function-sizeof
+;# -mworkaround-b96516 -ansi -auxbase-strip -g -O -pedantic -Wall
+;# -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -ansi -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.SEG	INIT
+_ReadAcc:
+	DS	2
+	.SEG	INITC
+	dc	hwrd(_AccHandler)
+	dc	lwrd(_AccHandler)
+	.CODE
+$_main:
+	enterl	#4
+?LBB_main:
+	bsr	$_LIS2DH_init
+	ld	AL,#(_ReadAcc)
+	bsr	$_MessagePioTask
+	ld	AL,#H'0001
+	st	AL,@(0,Y)
+	ld	AL,#H'0000
+	st	AL,@(H'0001,Y)
+	ld	AL,#H'0020
+	ld	AH,#H'0000
+	bsr	$_PioDebounce32
+	ld	AL,#H'0000
+	st	AL,@(0,Y)
+	ld	AL,#(_ReadAcc)
+	ld	AH,#H'4545
+	bsr	$_MessageSend
+	bsr	$_MessageLoop
+	ld	AL,#H'0000
+?LBE_main:
+	leavel	#4
+_handle_pio_INT1:
+	enterl	#2
+?LBB_handle_pio_INT1:
+	ld	X,@$XAP_AH
+	ld	AL,@(0,X)
+	and	AL,#H'0020
+	cmp	AL,#H'0000
+	beq	?L2
+	ld	AL,#(?LC0)
+	bsr	$_puts
+	bsr	$_readTap
+?L2:
+?LBE_handle_pio_INT1:
+	leavel	#2
+	.SEG	CONST
+?LC0:
+	dc	H'49
+	dc	H'6E
+	dc	H'74
+	dc	H'65
+	dc	H'72
+	dc	H'72
+	dc	H'75
+	dc	H'70
+	dc	H'74
+	dc	H'20
+	dc	H'48
+	dc	H'69
+	dc	H'67
+	dc	H'68
+	dc	H'20
+	dc	H'44
+	dc	H'65
+	dc	H'74
+	dc	H'65
+	dc	H'63
+	dc	H'74
+	dc	H'65
+	dc	H'64
+	dc	H'00
+	.CODE
+_AccHandler:
+	enterl	#3
+?LBB_AccHandler:
+	ld	X,@(H'0003,Y)
+	cmp	AH,#H'4545
+	beq	?L6
+	cmp	AH,#-H'7FDD
+	beq	?L8
+	bra	(?L9)
+?L6:
+	bsr	$_AccAvailable
+	cmp	AL,#H'0000
+	beq	?L4
+	bsr	$_AccRead
+	bra	(?L4)
+?L8:
+	ld	AH,@$XAP_UXL
+	bsr	_handle_pio_INT1
+	bra	(?L4)
+?L9:
+	st	AH,@(0,Y)
+	ld	AL,#(?LC1)
+	bsr	$_printf
+?L4:
+?LBE_AccHandler:
+	leavel	#3
+	.SEG	CONST
+?LC1:
+	dc	H'55
+	dc	H'6E
+	dc	H'68
+	dc	H'61
+	dc	H'6E
+	dc	H'64
+	dc	H'6C
+	dc	H'65
+	dc	H'64
+	dc	H'20
+	dc	H'6D
+	dc	H'65
+	dc	H'73
+	dc	H'73
+	dc	H'61
+	dc	H'67
+	dc	H'65
+	dc	H'20
+	dc	H'30
+	dc	H'78
+	dc	H'25
+	dc	H'78
+	dc	H'0A
+	dc	H'00
+	.CODE
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 6 total = 6
+;# Function pattern *movqi3 used[0] = 13 total = 13
+;# Function pattern *andqi3 used[0] = 1 total = 1
+;# Function pattern jump used[0] = 3 total = 3
+;# Function pattern *call1 used[0] = 5 total = 5
+;# Function pattern *call_value1 used[0] = 6 total = 6
+;# Function pattern movstrqi+3 used[0] = 2 total = 2
+;# Function pattern movstrqi+5 used[0] = 2 total = 2
+	MODULE	printf
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$_printf:
+	enterl	#3
+?LBB_printf:
+	ld	AH,@$XAP_AL
+	ld	AL,@$XAP_UY
+	add	AL,#H'0003
+?LBB2:
+	st	AL,@(0,Y)
+	ld	AL,#H'0000
+	bsr	$___print
+?LBE2:
+?LBE_printf:
+	leavel	#3
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 2 total = 2
+;# Function pattern *movqi3 used[0] = 1 total = 1
+;# Function pattern *addqi0 used[0] = 1 total = 1
+;# Function pattern *call_value1 used[0] = 1 total = 1
+	MODULE	puts
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$_puts:
+	enterl	#3
+?LBB_puts:
+	st	AL,@(0,Y)
+	ld	X,@$XAP_AL
+	tst	@(0,X)
+	beq	?L7
+?L5:
+	ld	X,@(0,Y)
+	ld	AL,@(0,X)
+	add	X,#H'0001
+	st	X,@(0,Y)
+	bsr	$_putchar
+	ld	X,@(0,Y)
+	tst	@(0,X)
+	bne	?L5
+?L7:
+	ld	AL,#H'000A
+	bsr	$_putchar
+	ld	AL,#H'0001
+?LBE_puts:
+	leavel	#3
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 3 total = 3
+;# Function pattern *movqi3 used[0] = 4 total = 4
+;# Function pattern *movqi8 used[0] = 1 total = 1
+;# Function pattern *addqi2 used[0] = 1 total = 1
+;# Function pattern *call_value1 used[0] = 2 total = 2
+;# Function pattern movstrqi+3 used[1] = 2 total = 2
+	MODULE	_init
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$__init:
+; leaf function with empty stack frame
+?LBB__init:
+?LBE__init:
+	rts
+	ENDMOD
+
+	MODULE	MessageSend
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$_MessageSend:
+	enterl	#5
+?LBB_MessageSend:
+	ld	X,@(H'0005,Y)
+	st	X,@(0,Y)
+	ld	X,#-H'0001
+	st	X,@(H'0002,Y)
+	st	X,@(H'0001,Y)
+	bsr	$_MessageSendLater
+?LBE_MessageSend:
+	leavel	#5
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 2 total = 2
+;# Function pattern *call1 used[0] = 1 total = 1
+;# Function pattern movstrqi+2 used[0] = 1 total = 1
+	MODULE	MessageLoop
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$_MessageLoop:
+	enterl	#6
+?LBB_MessageLoop:
+?L2:
+?LBB2:
+?LBB3:
+	ld	AL,@$XAP_UY
+	add	AL,#H'0001
+	bsr	$_MessageWait
+	ld	X,@(H'0001,Y)
+	ld	AL,@(H'0002,Y)
+	st	AL,@(-3,Y)
+	ld	AL,@(H'0003,Y)
+	st	AL,@(0,Y)
+	ld	AH,@(0,X)
+	ld	AL,@(1,X)
+	st	AH,@(-1,Y)
+	st	AL,@(-2,Y)
+	ld	AL,@$XAP_UXL
+	ld	AH,@(-3,Y)
+	bsr	?L5
+?L5:
+	add	X,@(-2,Y)
+	st	X,@H'ffff
+	ld	X,@$XAP_UXH
+	addc	X,@(-1,Y)
+	st	X,@(-1,Y)
+	ld	XH,@(-1,Y)
+	ld	X,@H'ffff
+	bsr	-?L5,X
+	ld	AL,@(H'0002,Y)
+	ld	AH,@(H'0003,Y)
+	bsr	$_MessageFree
+?LBE3:
+	bra	(?L2)
+?LBE2:
+?LBE_MessageLoop:
+	leavel	#6
+;.stabn	192,0,0,?LBB3
+;.stabn	224,0,0,?LBE3
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 3 used[1] = 1 total = 4
+;# Function pattern *movqi8 used[0] = 5 total = 5
+;# Function pattern *movhi used[0] = 1 used[2] = 1 total = 2
+;# Function pattern *addqi0 used[0] = 1 total = 1
+;# Function pattern jump used[0] = 1 total = 1
+;# Function pattern *call1 used[0] = 2 total = 2
+;# Function pattern *call4 used[0] = 1 total = 1
+	MODULE	print
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+_printChar:
+	enterl	#2
+?LBB_printChar:
+	ld	AH,@$XAP_AL
+?LBB2:
+	ld	X,@$_info
+	ld	X,@(0,X)
+	ld	AL,@$XAP_UXL
+	nadd	AL,#H'0000
+	cmp	AL,#(H'0001+H'000F)
+	bcc	?L2
+	ld	AL,@$XAP_UXL
+	nadd	AL,#H'0000
+	bsr	$_VmPutChar
+	bra	(?L3)
+?L2:
+	ld	AL,@$_info
+	ld	X,@$XAP_AL
+	ld	X,@(0,X)
+	st	X,@(-1,Y)
+	ld	X,@$XAP_AL
+	ld	AL,@(H'0004,X)
+	add	AL,@(-1,Y)
+	ld	X,@$XAP_AL
+	st	AH,@(0,X)
+?L3:
+	ld	X,@$_info
+	ld	AL,@(H'0004,X)
+	add	AL,#H'0001
+	st	AL,@(H'0004,X)
+?LBE2:
+?LBE_printChar:
+	leavel	#2
+;.stabn	192,0,0,?LBB2
+;.stabn	224,0,0,?LBE2
+_printString:
+	enterl	#3
+?LBB_printString:
+	st	AL,@(0,Y)
+?LBB3:
+	ld	AH,#H'0000
+	ld	X,@$_info
+	ld	AL,@$XAP_UXL
+	cmp	AH,@(H'0003,X)
+	bge	?L25
+?L10:
+	ld	X,@(0,Y)
+	add	X,@$XAP_AH
+	tst	@(0,X)
+	bne	?L7
+	ld	X,@$XAP_AL
+	st	AH,@(H'0003,X)
+?L7:
+	add	AH,#H'0001
+	ld	AL,@$_info
+	ld	X,@$XAP_AL
+	cmp	AH,@(H'0003,X)
+	blt	?L10
+?L25:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	sub	AL,@(H'0003,X)
+	st	AL,@(H'0002,X)
+	ld	X,@$_info
+	tst	@(H'0001,X)
+	bmi	?L11
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L33
+	bpl	?L15
+?L33:
+	bra	(?L11)
+?L15:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L34
+	bpl	?L15
+?L34:
+?L11:
+	ld	X,@$_info
+	ld	AL,@(H'0003,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0003,X)
+	cmp	AH,#H'0000
+	beq	?L35
+	bpl	?L19
+?L35:
+	bra	(?L28)
+?L19:
+	ld	X,@(0,Y)
+	ld	AL,@(0,X)
+	add	X,#H'0001
+	st	X,@(0,Y)
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0003,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0003,X)
+	cmp	AH,#H'0000
+	beq	?L36
+	bpl	?L19
+?L36:
+?L28:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L37
+	bpl	?L23
+?L37:
+	bra	(?L30)
+?L23:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L38
+	bpl	?L23
+?L38:
+?L30:
+?LBE3:
+?LBE_printString:
+	leavel	#3
+;.stabn	192,0,0,?LBB3
+;.stabn	224,0,0,?LBE3
+	.SEG	CONST
+_digits:
+	dc	H'30
+	dc	H'31
+	dc	H'32
+	dc	H'33
+	dc	H'34
+	dc	H'35
+	dc	H'36
+	dc	H'37
+	dc	H'38
+	dc	H'39
+	dc	H'61
+	dc	H'62
+	dc	H'63
+	dc	H'64
+	dc	H'65
+	dc	H'66
+	dc	H'30
+	dc	H'31
+	dc	H'32
+	dc	H'33
+	dc	H'34
+	dc	H'35
+	dc	H'36
+	dc	H'37
+	dc	H'38
+	dc	H'39
+	dc	H'41
+	dc	H'42
+	dc	H'43
+	dc	H'44
+	dc	H'45
+	dc	H'46
+	.CODE
+_printUnsigned8:
+	enterl	#5
+?LBB_printUnsigned8:
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+?LBB4:
+	ld	X,@$_info
+	ld	AL,@(H'0003,X)
+	smult	#H'0003
+	st	AL,@(H'0002,Y)
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	lsr	@(H'0002,Y)
+	cmp	AH,#H'0000
+	bne	?L72
+	cmp	AL,#H'0000
+	beq	?L64
+?L72:
+?L43:
+	ld	AL,@(H'0002,Y)
+	add	AL,#H'0003
+	st	AL,@(H'0002,Y)
+	ld	X,@$_info
+	ld	AL,@(H'0003,X)
+	add	AL,#H'0001
+	st	AL,@(H'0003,X)
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	lsr	@(H'0002,Y)
+	cmp	AH,#H'0000
+	bne	?L43
+	cmp	AL,#H'0000
+	bne	?L43
+?L64:
+	ld	AL,@(H'0002,Y)
+	add	AL,#-H'0003
+	st	AL,@(H'0002,Y)
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	sub	AL,@(H'0003,X)
+	st	AL,@(H'0002,X)
+	ld	X,@$_info
+	tst	@(H'0001,X)
+	bmi	?L44
+	ld	AL,@(H'0001,X)
+	and	AL,#H'0002
+	cmp	AL,#H'0000
+	beq	?L45
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L74
+	bpl	?L49
+?L74:
+	bra	(?L44)
+?L49:
+	ld	AL,#H'0030
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L75
+	bpl	?L49
+?L75:
+	bra	(?L44)
+?L45:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L76
+	bpl	?L54
+?L76:
+	bra	(?L44)
+?L54:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L77
+	bpl	?L54
+?L77:
+?L44:
+	tst	@(H'0002,Y)
+	bmi	?L69
+?L58:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	lsr	@(H'0002,Y)
+	ld	X,@$XAP_AL
+	and	X,#H'0007
+	ld	AL,@(_digits,X)
+	bsr	_printChar
+	ld	AL,@(H'0002,Y)
+	add	AL,#-H'0003
+	st	AL,@(H'0002,Y)
+	cmp	AL,#H'0000
+	bpl	?L58
+?L69:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L78
+	bpl	?L62
+?L78:
+	bra	(?L71)
+?L62:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L79
+	bpl	?L62
+?L79:
+?L71:
+?LBE4:
+?LBE_printUnsigned8:
+	leavel	#5
+;.stabn	192,0,0,?LBB4
+;.stabn	224,0,0,?LBE4
+_printUnsigned16:
+	enterl	#5
+?LBB_printUnsigned16:
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+?LBB5:
+	ld	X,@$_info
+	ld	AL,@(H'0003,X)
+	lsl	#H'0010
+	asr	#H'000E
+	st	AL,@(H'0002,Y)
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	lsr	@(H'0002,Y)
+	cmp	AH,#H'0000
+	bne	?L113
+	cmp	AL,#H'0000
+	beq	?L105
+?L113:
+?L84:
+	ld	AL,@(H'0002,Y)
+	add	AL,#H'0004
+	st	AL,@(H'0002,Y)
+	ld	X,@$_info
+	ld	AL,@(H'0003,X)
+	add	AL,#H'0001
+	st	AL,@(H'0003,X)
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	lsr	@(H'0002,Y)
+	cmp	AH,#H'0000
+	bne	?L84
+	cmp	AL,#H'0000
+	bne	?L84
+?L105:
+	ld	AL,@(H'0002,Y)
+	add	AL,#-H'0004
+	st	AL,@(H'0002,Y)
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	sub	AL,@(H'0003,X)
+	st	AL,@(H'0002,X)
+	ld	X,@$_info
+	tst	@(H'0001,X)
+	bmi	?L85
+	ld	AL,@(H'0001,X)
+	and	AL,#H'0002
+	cmp	AL,#H'0000
+	beq	?L86
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L115
+	bpl	?L90
+?L115:
+	bra	(?L85)
+?L90:
+	ld	AL,#H'0030
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L116
+	bpl	?L90
+?L116:
+	bra	(?L85)
+?L86:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L117
+	bpl	?L95
+?L117:
+	bra	(?L85)
+?L95:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L118
+	bpl	?L95
+?L118:
+?L85:
+	tst	@(H'0002,Y)
+	bmi	?L110
+?L99:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	lsr	@(H'0002,Y)
+	and	AL,#H'000F
+	ld	X,@$_info
+	ld	X,@(H'0001,X)
+	and	X,#H'0010
+	add	X,#(_digits)
+	add	X,@$XAP_AL
+	ld	AL,@(0,X)
+	bsr	_printChar
+	ld	AL,@(H'0002,Y)
+	add	AL,#-H'0004
+	st	AL,@(H'0002,Y)
+	cmp	AL,#H'0000
+	bpl	?L99
+?L110:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L119
+	bpl	?L103
+?L119:
+	bra	(?L112)
+?L103:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L120
+	bpl	?L103
+?L120:
+?L112:
+?LBE5:
+?LBE_printUnsigned16:
+	leavel	#5
+;.stabn	192,0,0,?LBB5
+;.stabn	224,0,0,?LBE5
+_printUnsigned10:
+	enterl	#5
+?LBB_printUnsigned10:
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+?LBB6:
+	ld	X,@$_info
+	ld	AH,@(H'0001,X)
+	ld	AL,@$XAP_AH
+	and	AL,#H'0002
+	cmp	AL,#H'0000
+	beq	?L122
+	ld	X,@(H'0002,X)
+	st	X,@H'fff9
+	ld	AL,@$XAP_AH
+	and	AL,#H'000D
+	cmp	AL,#H'0000
+	beq	?L123
+	ld	AL,#-H'0001
+	add	AL,@$XAP_UXL
+	st	AL,@H'fff9
+?L123:
+	ld	X,@$_info
+	ld	AL,@(H'0003,X)
+	cmp	AL,@H'fff9
+	bge	?L122
+	st	AL,@H'ffff
+	ld	AL,@H'fff9
+	st	AL,@(H'0003,X)
+	ld	AL,@H'ffff
+?L122:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	cmp	AH,#hwrd(H'0001+H'3B9AC9FF)
+	bcs	?L125
+	bne	?L231
+	cmp	AL,#lwrd(H'0001+H'3B9AC9FF)
+	bcs	?L125
+?L231:
+	ld	AL,#H'000A
+	bra	(?L228)
+?L125:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	cmp	AH,#hwrd(H'0001+H'5F5E0FF)
+	bcs	?L127
+	bne	?L232
+	cmp	AL,#lwrd(H'0001+H'5F5E0FF)
+	bcs	?L127
+?L232:
+	ld	AL,#H'0009
+	bra	(?L228)
+?L127:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	cmp	AH,#hwrd(H'0001+H'98967F)
+	bcs	?L129
+	bne	?L233
+	cmp	AL,#lwrd(H'0001+H'98967F)
+	bcs	?L129
+?L233:
+	ld	AL,#H'0008
+	bra	(?L228)
+?L129:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	cmp	AH,#hwrd(H'0001+H'F423F)
+	bcs	?L131
+	bne	?L234
+	cmp	AL,#lwrd(H'0001+H'F423F)
+	bcs	?L131
+?L234:
+	ld	AL,#H'0007
+	bra	(?L228)
+?L131:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	cmp	AH,#hwrd(H'0001+H'1869F)
+	bcs	?L133
+	bne	?L235
+	cmp	AL,#lwrd(H'0001+H'1869F)
+	bcs	?L133
+?L235:
+	ld	AL,#H'0006
+	bra	(?L228)
+?L133:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	cmp	AH,#hwrd(H'0001+H'270F)
+	bcs	?L135
+	bne	?L236
+	cmp	AL,#lwrd(H'0001+H'270F)
+	bcs	?L135
+?L236:
+	ld	AL,#H'0005
+	bra	(?L228)
+?L135:
+	ld	AL,@(H'0001,Y)
+	cmp	AL,#H'03E7
+	bcz	?L137
+	ld	X,#H'0004
+	bra	(?L227)
+?L137:
+	ld	AL,@(H'0001,Y)
+	cmp	AL,#H'0063
+	bcz	?L139
+	ld	AH,#H'0003
+	bra	(?L226)
+?L139:
+	ld	AL,@(H'0001,Y)
+	cmp	AL,#H'0009
+	bcz	?L141
+	ld	AL,#H'0002
+?L228:
+	st	AL,@(H'0002,Y)
+	bra	(?L126)
+?L141:
+	tst	@(H'0001,Y)
+	beq	?L143
+	ld	X,#H'0001
+?L227:
+	st	X,@(H'0002,Y)
+	bra	(?L126)
+?L143:
+	ld	AH,#H'0000
+?L226:
+	st	AH,@(H'0002,Y)
+?L126:
+	ld	X,@$_info
+	ld	AL,@(H'0002,Y)
+	cmp	AL,@(H'0003,X)
+	bge	?L145
+	ld	X,@(H'0003,X)
+	st	X,@(H'0002,Y)
+?L145:
+	ld	X,@$_info
+	ld	AH,@(H'0002,X)
+	sub	AH,@(H'0002,Y)
+	ld	AL,@(H'0001,X)
+	and	AL,#H'0005
+	cmp	AL,#H'0000
+	beq	?L146
+	add	AH,#-H'0001
+?L146:
+	st	AH,@(H'0002,X)
+	ld	X,@$_info
+	ld	AL,@(H'0001,X)
+	and	AL,#H'0008
+	cmp	AL,#H'0000
+	beq	?L147
+	ld	AL,@(H'0002,X)
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	ld	AL,#H'0020
+	bsr	_printChar
+?L147:
+	ld	X,@$_info
+	tst	@(H'0001,X)
+	bmi	?L148
+	ld	AL,@(H'0001,X)
+	and	AL,#H'0002
+	cmp	AL,#H'0000
+	beq	?L149
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L241
+	bpl	?L153
+?L241:
+	bra	(?L148)
+?L153:
+	ld	AL,#H'0030
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L242
+	bpl	?L153
+?L242:
+	bra	(?L148)
+?L149:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L243
+	bpl	?L158
+?L243:
+	bra	(?L148)
+?L158:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L244
+	bpl	?L158
+?L244:
+?L148:
+	ld	X,@$_info
+	ld	AL,@(H'0001,X)
+	and	AL,#H'0001
+	cmp	AL,#H'0000
+	beq	?L159
+	ld	AL,#H'002D
+	bra	(?L229)
+?L159:
+	ld	X,@$_info
+	ld	AL,@(H'0001,X)
+	and	AL,#H'0004
+	cmp	AL,#H'0000
+	beq	?L160
+	ld	AL,#H'002B
+?L229:
+	bsr	_printChar
+?L160:
+	ld	X,@(H'0002,Y)
+	cmp	X,#(H'0001+H'0009)
+	bcc	?L163
+	ld	X,@(?JTBASE214,X)
+	brxl
+	.SEG	CONST
+?JTBASE214:
+	.CODE
+?L214:
+	.SEG	CONST
+	dc	lwrd(?L162-?L214)
+	dc	lwrd(?L208-?L214)
+	dc	lwrd(?L203-?L214)
+	dc	lwrd(?L198-?L214)
+	dc	lwrd(?L193-?L214)
+	dc	lwrd(?L188-?L214)
+	dc	lwrd(?L183-?L214)
+	dc	lwrd(?L178-?L214)
+	dc	lwrd(?L173-?L214)
+	dc	lwrd(?L168-?L214)
+	.CODE
+?L163:
+	ld	X,#H'0000
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	cmp	AH,#hwrd(H'0001+H'3B9AC9FF)
+	bcs	?L223
+	bne	?L245
+	cmp	AL,#lwrd(H'0001+H'3B9AC9FF)
+	bcs	?L223
+?L245:
+?L167:
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	add	AL,#H'3600
+	nop
+	addc	AH,#H'C465
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	add	X,#H'0001
+	cmp	AH,#hwrd(H'0001+H'3B9AC9FF)
+	bcs	?L246
+	bne	?L167
+	cmp	AL,#lwrd(H'0001+H'3B9AC9FF)
+	bcc	?L167
+?L246:
+?L223:
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L168:
+	ld	X,#-H'0001
+?L169:
+	add	X,#H'0001
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	add	AL,#H'1F00
+	nop
+	addc	AH,#H'FA0A
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	cmp	AH,#H'0000
+	bpl	?L169
+	add	AL,#H'E100
+	nop
+	addc	AH,#H'05F5
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L173:
+	ld	X,#-H'0001
+?L174:
+	add	X,#H'0001
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	add	AL,#H'6980
+	nop
+	addc	AH,#H'FF67
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	cmp	AH,#H'0000
+	bpl	?L174
+	add	AL,#H'9680
+	nop
+	addc	AH,#H'0098
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L178:
+	ld	X,#-H'0001
+?L179:
+	add	X,#H'0001
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	add	AL,#H'BDC0
+	nop
+	addc	AH,#H'FFF0
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	cmp	AH,#H'0000
+	bpl	?L179
+	add	AL,#H'4240
+	nop
+	addc	AH,#H'000F
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L183:
+	ld	X,#-H'0001
+?L184:
+	add	X,#H'0001
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	add	AL,#H'7960
+	nop
+	addc	AH,#H'FFFE
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	cmp	AH,#H'0000
+	bpl	?L184
+	add	AL,#H'86A0
+	nop
+	addc	AH,#H'0001
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L188:
+	ld	X,#-H'0001
+?L189:
+	add	X,#H'0001
+	ld	AH,@(0,Y)
+	ld	AL,@(1,Y)
+	add	AL,#H'D8F0
+	nop
+	addc	AH,#H'FFFF
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	cmp	AH,#H'0000
+	bpl	?L189
+	add	AL,#H'2710
+	nop
+	addc	AH,#H'0000
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L193:
+	ld	X,#-H'0001
+	ld	AL,@(H'0001,Y)
+	st	AL,@H'fff9
+?L194:
+	add	X,#H'0001
+	ld	AH,#-H'03E8
+	add	AH,@H'fff9
+	st	AH,@H'fff9
+	cmp	AH,#H'0000
+	bpl	?L194
+	asr	#H'0010
+	add	AL,#H'03E8
+	nop
+	addc	AH,#H'0000
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L198:
+	ld	X,#-H'0001
+	ld	AL,@(H'0001,Y)
+	st	AL,@H'fff9
+?L199:
+	add	X,#H'0001
+	ld	AH,#-H'0064
+	add	AH,@H'fff9
+	st	AH,@H'fff9
+	cmp	AH,#H'0000
+	bpl	?L199
+	asr	#H'0010
+	add	AL,#H'0064
+	nop
+	addc	AH,#H'0000
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L203:
+	ld	X,#-H'0001
+	ld	AL,@(H'0001,Y)
+	st	AL,@H'fff9
+?L204:
+	add	X,#H'0001
+	ld	AH,#-H'000A
+	add	AH,@H'fff9
+	st	AH,@H'fff9
+	cmp	AH,#H'0000
+	bpl	?L204
+	asr	#H'0010
+	add	AL,#H'000A
+	nop
+	addc	AH,#H'0000
+	st	AH,@(0,Y)
+	st	AL,@(1,Y)
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L208:
+	ld	X,#-H'0001
+	ld	AL,@(H'0001,Y)
+	st	AL,@H'fff9
+?L209:
+	add	X,#H'0001
+	ld	AH,#-H'0001
+	add	AH,@H'fff9
+	st	AH,@H'fff9
+	cmp	AH,#H'0000
+	bpl	?L209
+	ld	AL,#H'0030
+	add	AL,@$XAP_UXL
+	bsr	_printChar
+?L162:
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L252
+	bpl	?L218
+?L252:
+	bra	(?L225)
+?L218:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	X,@$_info
+	ld	AL,@(H'0002,X)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,X)
+	cmp	AH,#H'0000
+	beq	?L253
+	bpl	?L218
+?L253:
+?L225:
+?LBE6:
+?LBE_printUnsigned10:
+	leavel	#5
+;.stabn	192,0,0,?LBB6
+;.stabn	224,0,0,?LBE6
+$___print:
+	enterl	#8
+?LBB___print:
+	st	AH,@(H'0005,Y)
+?LBB7:
+	st	Y,@$_info
+	st	AL,@(0,Y)
+	ld	AL,#H'0000
+	st	AL,@(H'0004,Y)
+	ld	X,@$XAP_AH
+	tst	@(0,X)
+	beq	?L330
+?L327:
+	ld	X,@(H'0005,Y)
+?LBB8:
+	ld	AL,@(0,X)
+	add	X,#H'0001
+	st	X,@(H'0005,Y)
+	cmp	AL,#H'0025
+	bne	?L258
+?LBB9:
+	ld	AH,#H'0001
+	st	AH,@H'fff8
+	ld	AL,#H'0000
+	st	AL,@(H'0001,Y)
+	ld	AH,#H'0000
+?L272:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'002D
+	bne	?L262
+	or	AH,#-H'8000
+	bra	(?L337)
+?L262:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'002B
+	bne	?L264
+	or	AH,#H'0004
+	bra	(?L337)
+?L264:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'0030
+	bne	?L266
+	or	AH,#H'0002
+	bra	(?L337)
+?L266:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'0020
+	bne	?L268
+	or	AH,#H'0008
+	bra	(?L337)
+?L268:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'0023
+	bne	?L270
+?L337:
+	add	X,#H'0001
+	st	X,@(H'0005,Y)
+	bra	(?L259)
+?L270:
+	ld	AL,#H'0000
+	st	AL,@H'fff8
+?L259:
+	tst	@H'fff8
+	bne	?L272
+	st	AH,@(H'0001,Y)
+	cmp	AH,#H'0000
+	bpl	?L273
+	ld	AL,@$XAP_AH
+	and	AL,#-H'0003
+	st	AL,@(H'0001,Y)
+?L273:
+	ld	AL,#H'0000
+	st	AL,@(H'0002,Y)
+	bra	(?L274)
+?L277:
+	ld	AL,@(H'0002,Y)
+	smult	#H'000A
+	ld	X,@(H'0005,Y)
+	add	AL,@(0,X)
+	add	AL,#-H'0030
+	st	AL,@(H'0002,Y)
+	add	X,#H'0001
+	st	X,@(H'0005,Y)
+?L274:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	bsr	$_isdigit
+	cmp	AL,#H'0000
+	bne	?L277
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'002A
+	bne	?L278
+	ld	X,@(H'0008,Y)
+	ld	AH,@$XAP_UXL
+	add	AH,#H'0001
+	st	AH,@(H'0008,Y)
+	ld	AL,@(0,X)
+	st	AL,@(H'0002,Y)
+	ld	AL,@(H'0005,Y)
+	add	AL,#H'0001
+	st	AL,@(H'0005,Y)
+?L278:
+	tst	@(H'0002,Y)
+	bpl	?L279
+	ld	AL,@(H'0002,Y)
+	nadd	AL,#H'0000
+	st	AL,@(H'0002,Y)
+	ld	AL,@(H'0001,Y)
+	or	AL,#-H'8000
+	st	AL,@(H'0001,Y)
+?L279:
+	ld	AL,#H'0000
+	st	AL,@(H'0003,Y)
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'002E
+	bne	?L280
+	bra	(?L338)
+?L284:
+	ld	AL,@(H'0001,Y)
+	or	AL,#H'0020
+	st	AL,@(H'0001,Y)
+	ld	AL,@(H'0003,Y)
+	smult	#H'000A
+	ld	X,@(H'0005,Y)
+	add	AL,@(0,X)
+	add	AL,#-H'0030
+	st	AL,@(H'0003,Y)
+?L338:
+	add	X,#H'0001
+	st	X,@(H'0005,Y)
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	bsr	$_isdigit
+	cmp	AL,#H'0000
+	bne	?L284
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'002A
+	bne	?L280
+	ld	X,@(H'0008,Y)
+	ld	AH,@$XAP_UXL
+	add	AH,#H'0001
+	st	AH,@(H'0008,Y)
+	ld	AL,@(0,X)
+	st	AL,@(H'0003,Y)
+	tst	@(0,X)
+	bmi	?L286
+	ld	AL,@(H'0001,Y)
+	or	AL,#H'0020
+	st	AL,@(H'0001,Y)
+?L286:
+	ld	AL,@(H'0005,Y)
+	add	AL,#H'0001
+	st	AL,@(H'0005,Y)
+?L280:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	bsr	$_tolower
+	cmp	AL,#H'0068
+	beq	?L288
+	cmp	AL,#H'006C
+	beq	?L289
+	bra	(?L287)
+?L288:
+	ld	AH,@(H'0005,Y)
+	add	AH,#H'0001
+	st	AH,@(H'0005,Y)
+	bra	(?L287)
+?L289:
+	ld	AL,@(H'0001,Y)
+	or	AL,#H'0040
+	st	AL,@(H'0001,Y)
+	ld	AL,@(H'0005,Y)
+	add	AL,#H'0001
+	st	AL,@(H'0005,Y)
+?L287:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	bsr	$_isupper
+	cmp	AL,#H'0000
+	beq	?L292
+	ld	AL,@(H'0001,Y)
+	or	AL,#H'0010
+	st	AL,@(H'0001,Y)
+?L292:
+	ld	AL,@(H'0001,Y)
+	and	AL,#H'0020
+	cmp	AL,#H'0000
+	bne	?L293
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	cmp	AL,#H'0073
+	bne	?L294
+	ld	AL,#H'7FFF
+	bra	(?L295)
+?L294:
+	ld	AL,#H'0001
+?L295:
+	st	AL,@(H'0003,Y)
+?L293:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	bsr	$_tolower
+	add	AL,#-H'0063
+	cmp	AL,#(H'0001+H'0015)
+	bcc	?L324
+	ld	X,@$XAP_AL
+	ld	X,@(?JTBASE325,X)
+	brxl
+	.SEG	CONST
+?JTBASE325:
+	.CODE
+?L325:
+	.SEG	CONST
+	dc	lwrd(?L313-?L325)
+	dc	lwrd(?L308-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L308-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L301-?L325)
+	dc	lwrd(?L298-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L323-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L304-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L324-?L325)
+	dc	lwrd(?L298-?L325)
+	.CODE
+?L298:
+	ld	AL,@(H'0001,Y)
+	and	AL,#H'0040
+	cmp	AL,#H'0000
+	beq	?L299
+	ld	X,@(H'0008,Y)
+	ld	AH,@$XAP_UXL
+	add	AH,#H'0002
+	st	AH,@(H'0008,Y)
+	ld	AH,@(0,X)
+	ld	AL,@(1,X)
+	bra	(?L341)
+?L299:
+	ld	X,@(H'0008,Y)
+	ld	AL,@$XAP_UXL
+	add	AL,#H'0001
+	st	AL,@(H'0008,Y)
+	ld	AH,#H'0000
+	ld	AL,@(0,X)
+?L341:
+	bsr	_printUnsigned16
+	bra	(?L296)
+?L301:
+	ld	AL,@(H'0001,Y)
+	and	AL,#H'0040
+	cmp	AL,#H'0000
+	beq	?L302
+	ld	X,@(H'0008,Y)
+	ld	AH,@$XAP_UXL
+	add	AH,#H'0002
+	st	AH,@(H'0008,Y)
+	ld	AH,@(0,X)
+	ld	AL,@(1,X)
+	bra	(?L340)
+?L302:
+	ld	X,@(H'0008,Y)
+	ld	AL,@$XAP_UXL
+	add	AL,#H'0001
+	st	AL,@(H'0008,Y)
+	ld	AH,#H'0000
+	ld	AL,@(0,X)
+?L340:
+	bsr	_printUnsigned8
+	bra	(?L296)
+?L304:
+	ld	AL,@(H'0001,Y)
+	ld	AH,@$XAP_AL
+	and	AH,#-H'000D
+	st	AH,@(H'0001,Y)
+	and	AL,#H'0040
+	cmp	AL,#H'0000
+	beq	?L305
+	ld	X,@(H'0008,Y)
+	ld	AH,@$XAP_UXL
+	add	AH,#H'0002
+	st	AH,@(H'0008,Y)
+	ld	AH,@(0,X)
+	ld	AL,@(1,X)
+	bra	(?L312)
+?L305:
+	ld	X,@(H'0008,Y)
+	ld	AL,@$XAP_UXL
+	add	AL,#H'0001
+	st	AL,@(H'0008,Y)
+	ld	AH,#H'0000
+	ld	AL,@(0,X)
+	bra	(?L312)
+?L308:
+?LBB10:
+	ld	AL,@(H'0001,Y)
+	and	AL,#H'0040
+	cmp	AL,#H'0000
+	beq	?L309
+	ld	X,@(H'0008,Y)
+	ld	AH,@$XAP_UXL
+	add	AH,#H'0002
+	st	AH,@(H'0008,Y)
+	ld	AH,@(0,X)
+	ld	AL,@(1,X)
+	bra	(?L339)
+?L309:
+	ld	X,@(H'0008,Y)
+	ld	AL,@$XAP_UXL
+	add	AL,#H'0001
+	st	AL,@(H'0008,Y)
+	ld	X,@(0,X)
+	ld	AH,@$XAP_UXL
+	asr	#H'0010
+?L339:
+	st	AH,@H'fff8
+	st	AL,@H'fff9
+	cmp	AH,#H'0000
+	bpl	?L311
+	ld	AL,@(H'0001,Y)
+	and	AL,#-H'000D
+	or	AL,#H'0001
+	st	AL,@(H'0001,Y)
+?L311:
+	ld	AH,@H'fff8
+	ld	AL,@H'fff9
+	cmp	AH,#H'0000
+	bpl	?L312
+	nadd	AL,#H'0000
+	xor	AH,#H'FFFF
+	addc	AH,#H'0000
+?L312:
+	bsr	_printUnsigned10
+?LBE10:
+	bra	(?L296)
+?L313:
+	ld	AL,@(H'0002,Y)
+	ld	AH,#-H'0001
+	add	AH,@$XAP_AL
+	st	AH,@(H'0002,Y)
+	tst	@(H'0001,Y)
+	bmi	?L314
+	add	AL,#-H'0002
+	st	AL,@(H'0002,Y)
+	cmp	AH,#H'0000
+	beq	?L356
+	bpl	?L318
+?L356:
+	bra	(?L314)
+?L318:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	AL,@(H'0002,Y)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,Y)
+	cmp	AH,#H'0000
+	beq	?L357
+	bpl	?L318
+?L357:
+?L314:
+	ld	X,@(H'0008,Y)
+	ld	AL,@$XAP_UXL
+	add	AL,#H'0001
+	st	AL,@(H'0008,Y)
+	ld	AL,@(0,X)
+	bsr	_printChar
+	ld	AL,@(H'0002,Y)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,Y)
+	cmp	AH,#H'0000
+	beq	?L358
+	bpl	?L322
+?L358:
+	bra	(?L296)
+?L322:
+	ld	AL,#H'0020
+	bsr	_printChar
+	ld	AL,@(H'0002,Y)
+	ld	AH,@$XAP_AL
+	add	AL,#-H'0001
+	st	AL,@(H'0002,Y)
+	cmp	AH,#H'0000
+	beq	?L359
+	bpl	?L322
+?L359:
+	bra	(?L296)
+?L323:
+	ld	X,@(H'0008,Y)
+	ld	AH,@$XAP_UXL
+	add	AH,#H'0001
+	st	AH,@(H'0008,Y)
+	ld	AL,@(0,X)
+	bsr	_printString
+	bra	(?L296)
+?L324:
+	ld	X,@(H'0005,Y)
+	ld	AL,@(0,X)
+	bsr	_printChar
+?L296:
+	ld	AH,@(H'0005,Y)
+	add	AH,#H'0001
+	st	AH,@(H'0005,Y)
+?LBE9:
+	bra	(?L255)
+?L258:
+	bsr	_printChar
+?L255:
+	ld	X,@(H'0005,Y)
+?LBE8:
+	tst	@(0,X)
+	bne	?L327
+?L330:
+?LBB11:
+	ld	AH,@(0,Y)
+	ld	AL,@$XAP_AH
+	nadd	AL,#H'0000
+	cmp	AL,#H'000F
+	bcz	?L328
+	ld	X,@(H'0004,Y)
+	add	X,@$XAP_AH
+	ld	AL,#H'0000
+	st	AL,@(0,X)
+?L328:
+?LBE11:
+	ld	AL,@(H'0004,Y)
+?LBE7:
+?LBE___print:
+	leavel	#8
+;.stabn	192,0,0,?LBB7
+;.stabn	192,0,0,?LBB8
+;.stabn	192,0,0,?LBB9
+;.stabn	192,0,0,?LBB10
+;.stabn	224,0,0,?LBE10
+;.stabn	224,0,0,?LBE9
+;.stabn	224,0,0,?LBE8
+;.stabn	192,0,0,?LBB11
+;.stabn	224,0,0,?LBE11
+;.stabn	224,0,0,?LBE7
+	.SEG	VAR
+$_info:
+	DS	1
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 165 used[1] = 15 used[3] = 1 total = 181
+;# Function pattern *movqi3 used[0] = 179 total = 179
+;# Function pattern *movqi8 used[0] = 44 total = 44
+;# Function pattern *movhi used[2] = 24 used[3] = 18 total = 42
+;# Function pattern *addhi3 used[0] = 14 total = 14
+;# Function pattern *addqi2 used[0] = 80 used[2] = 18 total = 98
+;# Function pattern *andqi3 used[0] = 20 total = 20
+;# Function pattern *iorqi3 used[0] = 10 total = 10
+;# Function pattern *subqi3 used[0] = 4 total = 4
+;# Function pattern *mulqi3_const used[0] = 4 total = 4
+;# Function pattern *extendqihi2 used[0] = 3 used[1] = 1 total = 4
+;# Function pattern *lshrhi3 used[0] = 6 total = 6
+;# Function pattern negqi2 used[0] = 4 total = 4
+;# Function pattern neghi2 used[0] = 1 total = 1
+;# Function pattern *zero_extendqihi2 used[0] = 3 total = 3
+;# Function pattern jump used[0] = 50 total = 50
+;# Function pattern *call1 used[0] = 36 total = 36
+;# Function pattern *call_value1 used[0] = 5 total = 5
+;# Function pattern tablejump_1 used[0] = 2 total = 2
+;# Function pattern movstrqi+3 used[0] = 52 used[1] = 14 total = 66
+;# Function pattern movstrqi+4 used[1] = 3 total = 3
+;# Function pattern movstrqi+5 used[0] = 20 total = 20
+;# Function pattern movstrqi+6 used[0] = 11 total = 11
+;# Function pattern movstrqi+7 used[0] = 8 total = 8
+	MODULE	isupper
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$_isupper:
+; leaf function with empty stack frame
+?LBB_isupper:
+	ld	AH,#H'0000
+	add	AL,#-H'0041
+	cmp	AL,#(H'0001+H'0019)
+	bcc	?L2
+	ld	AH,#H'0001
+?L2:
+	ld	AL,@$XAP_AH
+?LBE_isupper:
+	rts
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 1 total = 1
+;# Function pattern *movqi3 used[0] = 2 total = 2
+;# Function pattern *addqi2 used[0] = 1 total = 1
+;# Function pattern movstrqi+4 used[1] = 1 total = 1
+	MODULE	isdigit
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$_isdigit:
+; leaf function with empty stack frame
+?LBB_isdigit:
+	ld	AH,#H'0000
+	add	AL,#-H'0030
+	cmp	AL,#(H'0001+H'0009)
+	bcc	?L2
+	ld	AH,#H'0001
+?L2:
+	ld	AL,@$XAP_AH
+?LBE_isdigit:
+	rts
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 1 total = 1
+;# Function pattern *movqi3 used[0] = 2 total = 2
+;# Function pattern *addqi2 used[0] = 1 total = 1
+;# Function pattern movstrqi+4 used[1] = 1 total = 1
+	MODULE	tolower
+	.LARGE
+; GNU C version 3.3.3 (CSR version 30 for xapnative)
+; 	compiled by GNU C version 3.2.3 (mingw special 20030504-1).
+;# options passed: 
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/firmware
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/profiles/BlueLab-6.5.2-Release
+;# -I.
+;# -IC:/work/p4/bc/bluelab65/result/x86win32/image/bluelab_full/tools/include/standard
+;# -iprefix -isystem -D__GNUC__=3 -D__GNUC_MINOR__=3
+;# -D__GNUC_PATCHLEVEL__=3 -MD -MQ -massisted-crt0 -mlarge-mode
+;# -mno-inline-block-copy-mode -mfunction-ptr-pi -mal-first -mleaf-optim
+;# -mno-function-sizeof -mworkaround-b96516 -ansi -auxbase-strip -g -g -O
+;# -pedantic -Wall -Wmissing-prototypes -Wstrict-prototypes -Wsign-compare
+;# -Wredundant-decls -Werror -Wall -W -Wmissing-prototypes
+;# -Wstrict-prototypes -Wsign-compare -Wredundant-decls -Werror -ansi
+;# -fno-builtin-memcpy
+;# options enabled:  -fdefer-pop -fthread-jumps -fpeephole -ffunction-cse
+;# -fkeep-static-consts -fpcc-struct-return -fgcse-lm -fgcse-sm
+;# -floop-optimize -fcrossjumping -fif-conversion -fif-conversion2
+;# -fsched-interblock -fsched-spec -fbranch-count-reg -fcprop-registers
+;# -fcommon -fgnu-linker -fargument-alias -fmerge-constants
+;# -fzero-initialized-in-bss -fleading-underscore -fident -fpeephole2
+;# -fguess-branch-probability -fmath-errno -ftrapping-math -mlarge-mode
+;# -mquiet-mode -mbitfield-mode -mleaf-optim -mfunction-ptr-pi
+;# -massisted-crt0 -mworkaround-b96516 -mal-first
+
+	.ENHANCED
+	.CODE
+$_tolower:
+	enterl	#3
+?LBB_tolower:
+	st	AL,@(0,Y)
+	bsr	$_isupper
+	cmp	AL,#H'0000
+	beq	?L2
+	ld	AL,@(0,Y)
+	add	AL,#H'0020
+	st	AL,@(0,Y)
+?L2:
+	ld	AL,@(0,Y)
+?LBE_tolower:
+	leavel	#3
+	ENDMOD
+
+;# Function pattern *movqi2 used[0] = 2 used[1] = 1 total = 3
+;# Function pattern *movqi3 used[0] = 1 total = 1
+;# Function pattern *addqi2 used[0] = 1 total = 1
+;# Function pattern *call_value1 used[0] = 1 total = 1
+;# Function pattern movstrqi+3 used[0] = 1 total = 1
