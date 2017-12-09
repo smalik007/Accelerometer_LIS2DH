@@ -47,7 +47,7 @@ static void AccHandler(Task t, MessageId id, Message payload)
             {
                 AccRead();
             }
-           /* MessageSendLater(t, 0, 0, 1); */
+          /* MessageSendLater(t, READ_ACC, 0, 1); */
            break;
            
         case MESSAGE_PIO_CHANGED:
