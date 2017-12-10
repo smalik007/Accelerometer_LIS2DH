@@ -14,11 +14,7 @@ int main(void)
     /* int l;*/
     LIS2DH_init(); 
 
-    MessagePioTask(&ReadAcc.task);
-
-    /* Setup PIO interrupt messages */
-    PioDebounce32(ACC_INT_1,  /* PIO pins we are interested in */
-                1, 0);                 /* 2 reads and 20ms between them */     
+    MessagePioTask(&ReadAcc.task);  
     
     
     MessageSend(&ReadAcc.task,READ_ACC, 0);
@@ -51,6 +47,7 @@ static void AccHandler(Task t, MessageId id, Message payload)
            break;
            
         case MESSAGE_PIO_CHANGED:
+           printf("State changed on pio5 message id :[0x%x]\n", id);
            handle_pio_INT1(t, (MessagePioChanged*)payload);
            break;
 

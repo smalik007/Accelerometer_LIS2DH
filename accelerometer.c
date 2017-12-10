@@ -19,7 +19,13 @@ void LIS2DH_init(void)
         
         standby();
         setupTap();
-        active();  
+        active(); 
+        
+            /* Setup PIO interrupt messages */
+            PioDebounce32(ACC_INT_1,  /* PIO pins we are interested in */
+                10, 10);                 /* 2 reads and 20ms between them */   
+    
+    
         /* printf("I am here 1"));*/
        /* MessageSendLater(&theSink.task, SB_I2C_READ, 0, 5); */
        /* printf("I am here 2"));*/
